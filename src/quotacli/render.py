@@ -41,6 +41,18 @@ class RenderRow:
         return cls(provider_id=provider_id, display_name=display_name, snapshot=snapshot, error=error)
 
 
+def _format_absolute(resets_at: dt.datetime) -> str:
+    """Local-time anchor alongside the relative countdown, so the reading
+    doesn't go stale the moment it's screenshotted or pasted somewhere."""
+    local = resets_at.astimezone()
+    now_local = dt.datetime.now().astimezone()
+    if local.date() == now_local.date():
+        return local.strftime("%H:%M")
+    if 0 <= (local.date() - now_local.date()).days < 7:
+        return local.strftime("%a %H:%M")
+    return local.strftime("%b %d")
+
+
 def _format_reset(resets_at: dt.datetime | None) -> str:
     if resets_at is None:
         return "—"
@@ -58,13 +70,40 @@ def _format_reset(resets_at: dt.datetime | None) -> str:
         parts.append(f"{hours}h")
     if not days and minutes:
         parts.append(f"{minutes}m")
-    return "in " + " ".join(parts) if parts else "in <1m"
+    relative = "in " + " ".join(parts) if parts else "in <1m"
+    return f"{relative} ({_format_absolute(resets_at)})"
+
+
+# Severity thresholds for the Used column: <50% green, 50-79% yellow, >=80% red.
+def _used_color(used_fraction: float) -> str:
+    if used_fraction >= 0.80:
+        return "red"
+    if used_fraction >= 0.50:
+        return "yellow"
+    return "green"
 
 
 def _format_used(used_fraction: float | None) -> str:
     if used_fraction is None:
         return "—"
-    return f"{used_fraction * 100:.0f}%"
+    text = f"{used_fraction * 100:.0f}%"
+    return f"[{_used_color(used_fraction)}]{text}[/{_used_color(used_fraction)}]"
+
+
+# One glyph + color per provider — a quick visual anchor so you don't have
+# to read provider names to tell rows apart at a glance.
+_PROVIDER_STYLE = {
+    "claude-code": ("◆", "dark_orange"),
+    "grok": ("✦", "grey70"),
+    "codex": ("◇", "green"),
+    "cursor": ("▲", "blue"),
+    "antigravity": ("●", "magenta"),
+}
+
+
+def _glyph(provider_id: str) -> str:
+    symbol, color = _PROVIDER_STYLE.get(provider_id, ("○", "white"))
+    return f"[{color}]{symbol}[/{color}]"
 
 
 _ERROR_MESSAGES = {
@@ -85,16 +124,18 @@ def build_table(rows: list[RenderRow]) -> Table:
     table.add_column("Resets")
 
     for row in rows:
+        glyph = _glyph(row.provider_id)
+
         if row.snapshot is None:
             reason = _ERROR_MESSAGES.get(row.error.kind, "error") if row.error else "error"
-            table.add_row(row.display_name, f"[red]{reason}[/red]", "—", "—")
+            table.add_row(f"{glyph} {row.display_name}", f"[red]{reason}[/red]", "—", "—")
             continue
 
         windows = row.snapshot.windows
-        name_style = row.display_name
+        name_style = f"{glyph} {row.display_name}"
         if row.snapshot.is_stale:
             reason = _ERROR_MESSAGES.get(row.error.kind, "stale") if row.error else "stale"
-            name_style = f"{row.display_name} [dim](stale, {reason})[/dim]"
+            name_style = f"{glyph} {row.display_name} [dim](stale, {reason})[/dim]"
 
         if not windows:
             table.add_row(name_style, "[dim]nothing metered[/dim]", "—", "—")
