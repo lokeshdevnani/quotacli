@@ -1,0 +1,24 @@
+[project]
+name = "quotacli"
+version = "0.1.0"
+description = "Terminal quota tracker for Claude Code, Cursor, Codex, Antigravity, and Grok"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1",
+    "rich>=13.7",
+    "httpx>=0.27",
+    "pyobjc-framework-Security>=10.0; sys_platform == 'darwin'",
+]
+
+[project.scripts]
+quotacli = "quotacli.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-cov"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quotacli"]

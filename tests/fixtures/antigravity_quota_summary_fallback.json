@@ -1,0 +1,11 @@
+{
+  "quotaGroups": [
+    {
+      "buckets": [
+        {"name": "gemini-pro", "displayName": "Gemini Pro", "used": 40, "limit": 100, "resetTime": "2026-09-08T00:00:00Z"},
+        {"name": "no-limit", "displayName": "No limit published", "used": 5, "limit": 0},
+        {"name": "insane-value", "displayName": "Should be filtered", "used": 999, "limit": 10}
+      ]
+    }
+  ]
+}

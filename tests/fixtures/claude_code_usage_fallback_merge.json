@@ -1,0 +1,21 @@
+{
+  "five_hour": {
+    "utilization": 42.0,
+    "resets_at": "2026-09-07T20:00:00+00:00"
+  },
+  "seven_day": {
+    "utilization": 12.0,
+    "resets_at": "2026-09-10T00:00:00+00:00"
+  },
+  "limits": [
+    {
+      "kind": "weekly_opus",
+      "group": "weekly",
+      "percent": 5,
+      "severity": "normal",
+      "resets_at": "2026-09-10T00:00:00+00:00",
+      "scope": null,
+      "is_active": false
+    }
+  ]
+}

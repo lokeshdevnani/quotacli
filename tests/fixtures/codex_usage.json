@@ -1,0 +1,20 @@
+{
+  "rate_limit": {
+    "allowed": true,
+    "limit_reached": false,
+    "primary_window": {
+      "used_percent": 64,
+      "limit_window_seconds": 18000,
+      "reset_after_seconds": 511,
+      "reset_at": 1788804084
+    },
+    "secondary_window": {
+      "used_percent": 49,
+      "limit_window_seconds": 604800,
+      "reset_after_seconds": 496772,
+      "reset_at": 1789300345
+    }
+  },
+  "code_review_rate_limit": null,
+  "additional_rate_limits": null
+}
