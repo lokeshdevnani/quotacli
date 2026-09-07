@@ -152,6 +152,37 @@ def build_table(rows: list[RenderRow]) -> Table:
     return table
 
 
+def _headline_window(windows: list) -> object | None:
+    """The single most-worth-showing window for a provider: the one with
+    the highest used_fraction. Falls back to the first window if none have
+    a numeric fraction (e.g. Antigravity's last-resort activity count)."""
+    scored = [w for w in windows if w.used_fraction is not None]
+    if scored:
+        return max(scored, key=lambda w: w.used_fraction)
+    return windows[0] if windows else None
+
+
+def build_compact(rows: list[RenderRow]) -> str:
+    """Single line, statusline-style: glyph + worst percentage per
+    provider, color-coded, no labels or reset times. Meant to be embedded
+    in a tmux status-right segment or shell prompt, not read on its own."""
+    parts = []
+    for row in rows:
+        glyph = _glyph(row.provider_id)
+
+        if row.snapshot is None:
+            parts.append(f"{glyph}[dim]?[/dim]")
+            continue
+
+        headline = _headline_window(row.snapshot.windows)
+        text = _format_used(headline.used_fraction) if headline is not None else "—"
+        if row.snapshot.is_stale:
+            text = f"[dim]{text}[/dim]"
+        parts.append(f"{glyph}{text}")
+
+    return " ".join(parts)
+
+
 def _json_default(value):
     if isinstance(value, dt.datetime):
         return value.isoformat()

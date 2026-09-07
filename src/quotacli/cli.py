@@ -12,7 +12,7 @@ from rich.live import Live
 
 from quotacli.protocol import ErrorKind, Provider, ProviderError
 from quotacli.providers import build_providers
-from quotacli.render import RenderRow, build_json, build_table, console
+from quotacli.render import RenderRow, build_compact, build_json, build_table, console
 from quotacli.state import StateStore
 
 DEFAULT_INTERVAL = 30
@@ -93,6 +93,11 @@ def _print_verbose_tiers(providers: list[Provider]) -> None:
     is_flag=True,
     help="Include providers that aren't signed in (hidden by default).",
 )
+@click.option(
+    "--compact",
+    is_flag=True,
+    help="Single line, statusline-style: glyph + worst % per provider, no labels or reset times.",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -102,6 +107,7 @@ def main(
     provider_ids: tuple[str, ...],
     verbose: bool,
     show_all: bool,
+    compact: bool,
 ) -> None:
     """Quota status for Claude Code, Cursor, Codex, Antigravity, and Grok.
 
@@ -129,6 +135,10 @@ def main(
         raise click.UsageError("--json and --watch cannot be combined.")
     if verbose and watch:
         raise click.UsageError("--verbose and --watch cannot be combined.")
+    if as_json and compact:
+        raise click.UsageError("--json and --compact cannot be combined.")
+    if verbose and compact:
+        raise click.UsageError("--verbose and --compact cannot be combined.")
 
     if as_json:
         rows = _visible_rows(gather_rows(providers, store), show_all=show_all, explicit_ids=explicit_ids)
@@ -137,9 +147,12 @@ def main(
 
     if not watch:
         rows = _visible_rows(gather_rows(providers, store), show_all=show_all, explicit_ids=explicit_ids)
-        console.print(build_table(rows))
-        if verbose:
-            _print_verbose_tiers(providers)
+        if compact:
+            console.print(build_compact(rows), highlight=False)
+        else:
+            console.print(build_table(rows))
+            if verbose:
+                _print_verbose_tiers(providers)
         return
 
     with Live(console=console, refresh_per_second=1) as live:
@@ -148,7 +161,7 @@ def main(
                 rows = _visible_rows(
                     gather_rows(providers, store), show_all=show_all, explicit_ids=explicit_ids
                 )
-                live.update(build_table(rows))
+                live.update(build_compact(rows) if compact else build_table(rows))
                 time.sleep(interval)
         except KeyboardInterrupt:
             pass
