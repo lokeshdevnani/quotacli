@@ -9,18 +9,7 @@ One command to see how much of Claude Code, Cursor, Codex, Antigravity, and
 Grok you have left — and when it resets — without opening five different
 apps or dashboards.
 
-```
-┏━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Provider      ┃ Window                        ┃ Used ┃ Resets                ┃
-┡━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━┩
-│ ◆ Claude Code │ Session                       │  88% │ in 6m (05:10)         │
-│               │ Weekly All                    │  87% │ in 1d 15h (Wed 15:30) │
-│ ◇ Codex       │ 5h limit                      │  49% │ in 4h 19m (04:35)     │
-│               │ Weekly limit                  │  49% │ in 5d 17h (Sun 17:22) │
-│ ▲ Cursor      │ Included usage                │ 100% │ in 1d 23h (Wed 23:21) │
-│ ● Antigravity │ Gemini Models (Weekly)        │  25% │ in 4d 22h (Sat 22:27) │
-└───────────────┴───────────────────────────────┴──────┴───────────────────────┘
-```
+![quotacli demo: one-shot table, --compact statusline output, and --watch live-refreshing](docs/demo.gif)
 
 Or, embedded in a tmux status line: `◆ 88% · ◇ 49% · ▲ 100% · ● 25%`
 
@@ -78,6 +67,15 @@ just `quotacli` if you installed it globally via pip.)
 ```bash
 pip install -e ".[dev]"
 pytest
+```
+
+The README demo is recorded, not hand-drawn — regenerate it after a visible
+output change with:
+
+```bash
+brew install asciinema agg
+asciinema rec --window-size 104x23 --command "bash docs/demo.sh" docs/demo.cast --overwrite -q
+agg --idle-time-limit 1.2 --font-size 15 docs/demo.cast docs/demo.gif
 ```
 
 All 5 providers' undocumented, reverse-engineered endpoints can drift without
