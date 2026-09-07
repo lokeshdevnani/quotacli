@@ -1,5 +1,5 @@
 [project]
-name = "quotacli"
+name = "quotacli-mac"
 version = "0.1.0"
 description = "Terminal quota tracker for Claude Code, Cursor, Codex, Antigravity, and Grok"
 readme = "README.md"
