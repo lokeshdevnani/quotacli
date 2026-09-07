@@ -162,6 +162,9 @@ def _headline_window(windows: list) -> object | None:
     return windows[0] if windows else None
 
 
+_COMPACT_SEPARATOR = " [dim]·[/dim] "
+
+
 def build_compact(rows: list[RenderRow]) -> str:
     """Single line, statusline-style: glyph + worst percentage per
     provider, color-coded, no labels or reset times. Meant to be embedded
@@ -171,16 +174,15 @@ def build_compact(rows: list[RenderRow]) -> str:
         glyph = _glyph(row.provider_id)
 
         if row.snapshot is None:
-            parts.append(f"{glyph}[dim]?[/dim]")
+            parts.append(f"{glyph} [dim]?[/dim]")
             continue
 
         headline = _headline_window(row.snapshot.windows)
         text = _format_used(headline.used_fraction) if headline is not None else "—"
-        if row.snapshot.is_stale:
-            text = f"[dim]{text}[/dim]"
-        parts.append(f"{glyph}{text}")
+        text = f"[dim]{text}[/dim]" if row.snapshot.is_stale else f"[bold]{text}[/bold]"
+        parts.append(f"{glyph} {text}")
 
-    return " ".join(parts)
+    return _COMPACT_SEPARATOR.join(parts)
 
 
 def _json_default(value):

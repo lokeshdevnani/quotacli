@@ -52,10 +52,19 @@ def test_stale_snapshot_still_shown_but_dimmed():
     assert "[dim]" in line
 
 
-def test_multiple_providers_space_separated():
+def test_multiple_providers_separated_by_dim_middot():
     row_a = RenderRow.from_snapshot(
         "claude-code", "Claude Code", _snapshot([LimitWindow("A", 0.1, None)], "claude-code")
     )
     row_b = RenderRow.from_snapshot("codex", "Codex", _snapshot([LimitWindow("A", 0.2, None)], "codex"))
     line = build_compact([row_a, row_b])
-    assert line.count(" ") == 1
+    assert "[dim]·[/dim]" in line
+    assert line.count("[dim]·[/dim]") == 1
+
+
+def test_percentage_is_bold_when_fresh():
+    row = RenderRow.from_snapshot(
+        "claude-code", "Claude Code", _snapshot([LimitWindow("A", 0.1, None)], "claude-code")
+    )
+    line = build_compact([row])
+    assert "[bold]" in line and "[/bold]" in line
