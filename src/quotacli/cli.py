@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import click
 from rich.live import Live
 
-from quotacli.protocol import Provider, ProviderError
+from quotacli.protocol import ErrorKind, Provider, ProviderError
 from quotacli.providers import build_providers
 from quotacli.render import RenderRow, build_json, build_table, console
 from quotacli.state import StateStore
@@ -38,6 +38,29 @@ def gather_rows(providers: list[Provider], store: StateStore) -> list[RenderRow]
     return rows
 
 
+def _visible_rows(rows: list[RenderRow], *, show_all: bool, explicit_ids: set[str]) -> list[RenderRow]:
+    """Hide providers that have never been signed in and have nothing
+    cached to show — pure noise if you don't use that tool. A provider
+    named explicitly via --provider is always shown regardless (asking for
+    it by name is an unambiguous request to see it, even if unauthenticated),
+    and --all bypasses this filter entirely."""
+    if show_all:
+        return rows
+    visible = []
+    for row in rows:
+        if row.provider_id in explicit_ids:
+            visible.append(row)
+            continue
+        if (
+            row.snapshot is None
+            and row.error is not None
+            and row.error.kind == ErrorKind.NEEDS_AUTH
+        ):
+            continue
+        visible.append(row)
+    return visible
+
+
 def _print_verbose_tiers(providers: list[Provider]) -> None:
     """Antigravity's bridge-discovery tier can't be meaningfully unit-tested
     end-to-end, so -v reports which of its 4 tiers actually answered."""
@@ -63,6 +86,13 @@ def _print_verbose_tiers(providers: list[Provider]) -> None:
     help="Limit to one or more provider ids (repeatable), e.g. --provider claude-code.",
 )
 @click.option("-v", "--verbose", is_flag=True, help="Report which data source answered per provider.")
+@click.option(
+    "-a",
+    "--all",
+    "show_all",
+    is_flag=True,
+    help="Include providers that aren't signed in (hidden by default).",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -71,22 +101,27 @@ def main(
     as_json: bool,
     provider_ids: tuple[str, ...],
     verbose: bool,
+    show_all: bool,
 ) -> None:
-    """Quota status for Claude Code, Cursor, Codex, Antigravity, and Grok."""
+    """Quota status for Claude Code, Cursor, Codex, Antigravity, and Grok.
+
+    Providers that have never been signed in are hidden by default; pass
+    -a/--all to see them too.
+    """
     if ctx.invoked_subcommand is not None:
         return
 
     providers = build_providers()
-    if provider_ids:
-        wanted = set(provider_ids)
+    explicit_ids: set[str] = set(provider_ids)
+    if explicit_ids:
         known = {p.id for p in providers}
-        unknown = wanted - known
+        unknown = explicit_ids - known
         if unknown:
             raise click.UsageError(
                 f"Unknown provider id(s): {', '.join(sorted(unknown))}. "
                 f"Known: {', '.join(sorted(known))}."
             )
-        providers = [p for p in providers if p.id in wanted]
+        providers = [p for p in providers if p.id in explicit_ids]
 
     store = StateStore()
 
@@ -96,12 +131,12 @@ def main(
         raise click.UsageError("--verbose and --watch cannot be combined.")
 
     if as_json:
-        rows = gather_rows(providers, store)
+        rows = _visible_rows(gather_rows(providers, store), show_all=show_all, explicit_ids=explicit_ids)
         console.print_json(build_json(rows))
         return
 
     if not watch:
-        rows = gather_rows(providers, store)
+        rows = _visible_rows(gather_rows(providers, store), show_all=show_all, explicit_ids=explicit_ids)
         console.print(build_table(rows))
         if verbose:
             _print_verbose_tiers(providers)
@@ -110,7 +145,9 @@ def main(
     with Live(console=console, refresh_per_second=1) as live:
         try:
             while True:
-                rows = gather_rows(providers, store)
+                rows = _visible_rows(
+                    gather_rows(providers, store), show_all=show_all, explicit_ids=explicit_ids
+                )
                 live.update(build_table(rows))
                 time.sleep(interval)
         except KeyboardInterrupt:
