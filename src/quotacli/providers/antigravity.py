@@ -1,7 +1,10 @@
 """Antigravity provider: most complex of the five, a 4-tier fallback chain.
 
 1. loadCodeAssist — plan/tier label only, never usage numbers.
-2. Preferred: the local language-server's own RPC, discovered via ps/lsof.
+2. Preferred: the local language-server's own RPC. Discovered via ps/lsof
+   if the Antigravity app is running; otherwise a headless instance of the
+   app's bundled language server is started for the duration of the call
+   (so the numbers don't depend on the app being open).
 3. Fallback: Google's direct quota endpoint (usually 403 for personal
    accounts).
 4. Last resort: count today's model-turn lines in a local JSONL transcript,
@@ -17,7 +20,10 @@ import base64
 import datetime as dt
 import json
 import re
+import secrets
 import subprocess
+import tempfile
+import time
 from pathlib import Path
 
 import httpx
@@ -32,6 +38,10 @@ KEYCHAIN_SERVICE = "gemini"
 KEYCHAIN_ACCOUNT = "antigravity"
 GO_KEYRING_PREFIX = "go-keyring-base64:"
 TRANSCRIPT_ROOT = Path.home() / ".gemini" / "antigravity" / "brain"
+LANGUAGE_SERVER_BIN = Path("/Applications/Antigravity.app/Contents/Resources/bin/language_server")
+CLOUD_CODE_ENDPOINT = "https://cloudcode-pa.googleapis.com"
+# Cold start of the headless server was observed at ~15s; leave headroom.
+HEADLESS_STARTUP_DEADLINE = 45.0
 
 
 def _read_credential() -> dict:
@@ -76,10 +86,10 @@ def _fetch_plan_label(access_token: str) -> str | None:
         return None
 
 
-def _discover_bridge() -> tuple[str, int] | None:
+def _discover_bridge() -> tuple[str, list[int]] | None:
     """ps for the running language-server + its CSRF token, lsof for the
-    port(s) it's listening on. Returns (csrf_token, port) for the first
-    listening TCP port found, or None if the process/port can't be found."""
+    port(s) it's listening on. Returns (csrf_token, ports), or None if the
+    process/ports can't be found."""
     try:
         ps_output = subprocess.run(
             ["ps", "-Ao", "pid,command"], capture_output=True, text=True, timeout=5
@@ -101,28 +111,34 @@ def _discover_bridge() -> tuple[str, int] | None:
     if pid is None or token is None:
         return None
 
+    ports = _listening_ports(pid)
+    if not ports:
+        return None
+    return token, ports
+
+
+def _listening_ports(pid: str | int) -> list[int]:
     try:
         lsof_output = subprocess.run(
-            ["lsof", "-nP", "-a", "-p", pid, "-iTCP", "-sTCP:LISTEN"],
+            ["lsof", "-nP", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN"],
             capture_output=True,
             text=True,
             timeout=5,
         ).stdout
     except (OSError, subprocess.SubprocessError):
-        return None
+        return []
 
     # Order preserved (not a set) — the process can have more than one
-    # listening TCP port (observed live: two), and only one serves this
-    # RPC, so every port found must be tried, not one picked arbitrarily.
+    # listening TCP port (observed live: two, one HTTPS and one plain HTTP),
+    # and only one serves this RPC over TLS, so every port found must be
+    # tried, not one picked arbitrarily.
     seen = set()
     ports = []
     for port in re.findall(r":(\d+)\s*\(LISTEN\)", lsof_output):
         if port not in seen:
             seen.add(port)
             ports.append(int(port))
-    if not ports:
-        return None
-    return token, ports
+    return ports
 
 
 def _fetch_via_bridge() -> dict | None:
@@ -132,7 +148,7 @@ def _fetch_via_bridge() -> dict | None:
     client — the self-signed cert is expected here and nowhere else."""
     discovered = _discover_bridge()
     if discovered is None:
-        return None
+        return _fetch_via_headless_server()
     token, ports = discovered
 
     for port in ports:
@@ -140,6 +156,51 @@ def _fetch_via_bridge() -> dict | None:
         if body is not None:
             return body
     return None
+
+
+def _fetch_via_headless_server() -> dict | None:
+    """Antigravity app isn't running, so start the app's own bundled
+    language server headless, ask it, and always kill it again. It reads the
+    same keychain credential itself. Its state dir is a throwaway so nothing
+    is written into ~/.gemini."""
+    if not LANGUAGE_SERVER_BIN.is_file():
+        return None
+
+    token = secrets.token_hex(16)
+    with tempfile.TemporaryDirectory(prefix="quotacli-ag-") as gemini_dir:
+        try:
+            proc = subprocess.Popen(
+                [
+                    str(LANGUAGE_SERVER_BIN),
+                    "-standalone",
+                    "-csrf_token", token,
+                    "-gemini_dir", gemini_dir,
+                    "-cloud_code_endpoint", CLOUD_CODE_ENDPOINT,
+                    "-disable_telemetry",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            return None
+
+        try:
+            deadline = time.monotonic() + HEADLESS_STARTUP_DEADLINE
+            while time.monotonic() < deadline and proc.poll() is None:
+                for port in _listening_ports(proc.pid):
+                    body = _try_bridge_port(token, port)
+                    if body is not None:
+                        return body
+                time.sleep(1.0)
+            return None
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
 
 def _try_bridge_port(token: str, port: int) -> dict | None:

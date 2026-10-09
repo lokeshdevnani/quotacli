@@ -50,6 +50,12 @@ quotacli --provider claude-code           # limit to one or more providers (repe
 quotacli --provider antigravity -v        # report which of Antigravity's 4 data-source tiers answered
 ```
 
+**Unattended use** (cron, tmux, agents calling `quotacli --json`): no
+keychain dialogs — secrets are read through `/usr/bin/security`, which
+Claude Code and Antigravity already trust. If the Antigravity app isn't
+running, a headless copy of its bundled language server is started for
+~10s and stopped again, so its numbers don't depend on the app being open.
+
 State (last-known-good snapshots, and Claude Code/Codex 429 backoff
 deadlines) persists at `~/.config/quotacli/state.json`.
 
